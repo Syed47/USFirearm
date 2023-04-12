@@ -1,0 +1,39 @@
+---
+title: "USFirearm"
+author: "Syed Baryalay"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+url <- "https://raw.githubusercontent.com/BuzzFeedNews/nics-firearm-background-checks/master/data/nics-firearm-background-checks.csv"
+
+firearm <- read.csv(url, header = TRUE)
+
+glimpse(firearm)
+
+complete <- sum(complete.cases(firearm)) # complete cases
+incomplete <- sum(!complete.cases(firearm)) # incomplete cases
+
+# proportion
+complete/nrow(firearm)
+incomplete/nrow(firearm)
+
+# checking for missing values (NA) in each column
+for (name in colnames(firearm)) {
+    cat(name, ":", sum(is.na(firearm[,name])), "\n")
+}
+
+```
