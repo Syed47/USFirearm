@@ -10,11 +10,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+###
+Generate some insightful visualizations to display this data. Does the rate of change in total firearms background checks over time vary across states?
+
+
 ```{r}
 library(tidyverse)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(fpp3)
 ```
 
 ```{r}
@@ -27,13 +32,99 @@ glimpse(firearm)
 complete <- sum(complete.cases(firearm)) # complete cases
 incomplete <- sum(!complete.cases(firearm)) # incomplete cases
 
-# proportion
+# proportions
 complete/nrow(firearm)
 incomplete/nrow(firearm)
 
 # checking for missing values (NA) in each column
-for (name in colnames(firearm)) {
-    cat(name, ":", sum(is.na(firearm[,name])), "\n")
+for (col in colnames(firearm)) {
+    count <- sum(is.na(firearm[,col]))
+    cat(col, ":", count, ",", round(100*count/nrow(firearm), 2), "%\n")
 }
+
+```
+
+```{r}
+library(GGally)
+firearm |>
+    filter(complete.cases(firearm)) |>
+        ggparcoord(columns = c(5:8, 27), 
+           groupColumn = "state", 
+           scale="uniminmax") + 
+        theme(legend.position="none", 
+              plot.title = element_text(size=11))
+```
+
+
+```{r}
+
+
+# Load required libraries
+library(tidyverse)
+library(forecast)
+
+# Read in the data
+firearm <- read_csv(url)
+
+# Convert "month" column to date format
+firearm$month <- as.Date(paste(firearm$month, "01", sep = "-"))
+
+# Aggregate the data by month
+firearm_monthly <- firearm %>%
+  group_by(month) %>%
+  summarise(totals)
+
+# Creating a time series object
+firearm_ts_model <- ts(firearm_monthly$totals, start = c(2010, 1), frequency = 12)
+
+# Split data into training and testing sets
+train <- window(firearm_ts_model, end = c(2021, 12))
+test <- window(firearm_ts_model, start = c(2022, 1))
+
+# Fitting ARIMA Time Series model
+fit_arima <- auto.arima(train)
+
+# Forcasting the next 12 months
+forecast_arima <- forecast(fit_arima, h = 12)
+
+# Plot forecasts
+plot(forecast_arima, xlab = "Year", ylab = "Totals", main = "ARIMA Forecasts")
+
+# Evaluate forecast accuracy
+accuracy(forecast_arima, test)
+
+
+
+```
+
+
+```{r}
+
+library(dplyr)
+
+# load the data
+data <- read.csv(url)
+
+# convert the month column to a date format
+data$month <- as.Date(paste0(data$month, "-01"))
+
+# calculate the total number of firearm background checks for each state and month
+data <- data %>% 
+  group_by(state, month) %>% 
+  summarise(total_checks = sum(totals, na.rm = TRUE))
+
+# calculate the growth rate of the total number of firearm background checks for each state and month
+data <- data %>% 
+  group_by(state) %>% 
+  mutate(growth_rate = (total_checks - lag(total_checks, default = 0))/lag(total_checks, default = 1))
+
+# calculate the average growth rate for each state
+avg_growth_rate <- data %>% 
+  group_by(state) %>% 
+  summarise(avg_growth_rate = mean(growth_rate, na.rm = TRUE))
+
+# print the results
+print(avg_growth_rate)
+
 
 ```
