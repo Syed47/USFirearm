@@ -41,10 +41,14 @@ glimpse(firearm)
 
 
 ```{r}
+library(dplyr)
+library(lubridate)
+
 dat <- firearm %>% 
-  mutate(date = ymd(paste(month, "01"))) %>%
-  select(date, state, totals) %>% 
-  filter(complete.cases(.)) 
+    mutate(date = ymd(paste(month, "01"))) %>%
+    select(date, state, totals) %>%
+    filter(complete.cases(.)) %>%
+    arrange(date) 
 
 glimpse(dat)
 ```
@@ -63,12 +67,12 @@ ggplot(dat) +
 ```
 
 
-**Plot of total background checks in each state as well as overall mean on the _log_ scale**
+**Plot of total background checks in each state as well as overall median on the _log_ scale**
 
 ```{r fig.width=6, fig.height=6}
 ggplot(dat) + 
     geom_line(mapping=aes(x=date, y=log(totals), color=state)) +
-    geom_line(dat %>% group_by(date) %>% summarise(totals=mean(totals)), 
+    geom_line(dat %>% group_by(date) %>% summarise(totals=median(totals)), 
               mapping=aes(x=date, y=log(totals))) +
     theme(legend.position="bottom",
           legend.title = element_text( size=10), 
@@ -79,28 +83,52 @@ ggplot(dat) +
 
 **Time series decomposition of total background firearm checks**
 
-_we are only interested in trend but we need to get rid of seasonal effect_
+_we are only interested in trend which is obtain after removing seasonal effect_
 
 ```{r}
+dat <- dat |> 
+    group_by(date) |> 
+    summarise(totals = sum(totals))
+
+glimpse(dat) # totals checks each month in the US
+
 firearm_ts <- ts(dat$totals, 
-             start = min(year(dat$date)), 
-             end = max(year(dat$date)), 
+             start = c(min(year(dat$date)), 11), 
+             end = c(max(year(dat$date)), 3), 
              frequency = 12)
-# Decomposing the model and extracting trend component
+
+# Decomposing the model to obtain trend
 fit_dcmp <- decompose(firearm_ts)
-trend <- fit_dcmp$trend # important
-# firearm_seasonal <- fit_dcmp$seasonal
-# firearm_remainder <- fit_dcmp$random
 
 autoplot(fit_dcmp) + 
   xlab("Year") + 
   ylab("Total Background Checks") + 
   ggtitle("USFirearm Decomposition")
 
-
-autoplot(trend) + xlab("Year") + ylab("Total Background Checks") + 
-  ggtitle("Overall Trend of firearm background checks in US")
-
+autoplot(fit_dcmp$trend) + 
+    xlab("Year") + 
+    ylab("Total Background Checks") + 
+    ggtitle("Trend of firearm background checks across states")
 ```
 
-we can see that there is cyclone repeating every 4 years or so.
+
+The original data has strong seasonality (no cycles however).
+
+*After decomposing the time series, we have obtain the trend across the states.*
+
+
+Next I fit an ARIMA model that I can use to forecast ahead.
+
+```{r}
+# fitting an ARIMA models to our time series
+fit_arima <- auto.arima(firearm_ts)
+summary(fit_arima)
+
+# forecasting for the next 24 months
+forecast_arima <- forecast(fit_arima, h = 24)
+
+autoplot(forecast_arima) + 
+  xlab("Year") + 
+  ylab("Total Background Checks") + 
+  ggtitle("24 Months Firearm Background Checks Forecast (ARIMA) ")
+```
