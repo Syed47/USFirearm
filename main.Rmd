@@ -2,129 +2,105 @@
 title: "USFirearm"
 author: "Syed Baryalay"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, fig.width=6, fig.height=3}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
 ###
-Generate some insightful visualizations to display this data. Does the rate of change in total firearms background checks over time vary across states?
+
+Generate some insightful visualizations to display this data. 
+
+Does the rate of change in total firearms background checks over time vary across states?
 
 
-```{r}
-library(tidyverse)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(fpp3)
-```
 
 ```{r}
+suppressMessages(library(tidyverse))
+suppressMessages(library(dplyr))
+suppressMessages(library(tidyr))
+suppressMessages(library(fpp3))
+suppressMessages(library(readr))
+suppressMessages(library(forecast))
+suppressMessages(library(ggplot2))
+
 url <- "https://raw.githubusercontent.com/BuzzFeedNews/nics-firearm-background-checks/master/data/nics-firearm-background-checks.csv"
 
 firearm <- read.csv(url, header = TRUE)
-
 glimpse(firearm)
-
-complete <- sum(complete.cases(firearm)) # complete cases
-incomplete <- sum(!complete.cases(firearm)) # incomplete cases
-
-# proportions
-complete/nrow(firearm)
-incomplete/nrow(firearm)
-
-# checking for missing values (NA) in each column
-for (col in colnames(firearm)) {
-    count <- sum(is.na(firearm[,col]))
-    cat(col, ":", count, ",", round(100*count/nrow(firearm), 2), "%\n")
-}
-
 ```
 
-```{r}
-library(GGally)
-firearm |>
-    filter(complete.cases(firearm)) |>
-        ggparcoord(columns = c(5:8, 27), 
-           groupColumn = "state", 
-           scale="uniminmax") + 
-        theme(legend.position="none", 
-              plot.title = element_text(size=11))
-```
+
+
+**Cleaning and filtering original data for analysis**
 
 
 ```{r}
+dat <- firearm %>% 
+  mutate(date = ymd(paste(month, "01"))) %>%
+  select(date, state, totals) %>% 
+  filter(complete.cases(.)) 
 
-
-# Load required libraries
-library(tidyverse)
-library(forecast)
-
-# Read in the data
-firearm <- read_csv(url)
-
-# Convert "month" column to date format
-firearm$month <- as.Date(paste(firearm$month, "01", sep = "-"))
-
-# Aggregate the data by month
-firearm_monthly <- firearm %>%
-  group_by(month) %>%
-  summarise(totals)
-
-# Creating a time series object
-firearm_ts_model <- ts(firearm_monthly$totals, start = c(2010, 1), frequency = 12)
-
-# Split data into training and testing sets
-train <- window(firearm_ts_model, end = c(2021, 12))
-test <- window(firearm_ts_model, start = c(2022, 1))
-
-# Fitting ARIMA Time Series model
-fit_arima <- auto.arima(train)
-
-# Forcasting the next 12 months
-forecast_arima <- forecast(fit_arima, h = 12)
-
-# Plot forecasts
-plot(forecast_arima, xlab = "Year", ylab = "Totals", main = "ARIMA Forecasts")
-
-# Evaluate forecast accuracy
-accuracy(forecast_arima, test)
-
-
-
+glimpse(dat)
 ```
 
+
+**Plot of total background checks in each state as well as overall mean.**
+
+```{r fig.width=6, fig.height=6}
+ggplot(dat) + 
+    geom_line(mapping=aes(x=date, y=totals, color=state)) +
+    geom_line(dat %>% group_by(date) %>% summarise(totals=mean(totals)), 
+              mapping=aes(x=date, y=totals)) +
+    theme(legend.position="bottom",
+          legend.title = element_text(size=10), 
+          legend.text=element_text(size=6))
+```
+
+
+**Plot of total background checks in each state as well as overall mean on the _log_ scale**
+
+```{r fig.width=6, fig.height=6}
+ggplot(dat) + 
+    geom_line(mapping=aes(x=date, y=log(totals), color=state)) +
+    geom_line(dat %>% group_by(date) %>% summarise(totals=mean(totals)), 
+              mapping=aes(x=date, y=log(totals))) +
+    theme(legend.position="bottom",
+          legend.title = element_text( size=10), 
+          legend.text=element_text(size=6))
+```
+
+
+
+**Time series decomposition of total background firearm checks**
+
+_we are only interested in trend but we need to get rid of seasonal effect_
 
 ```{r}
+firearm_ts <- ts(dat$totals, 
+             start = min(year(dat$date)), 
+             end = max(year(dat$date)), 
+             frequency = 12)
+# Decomposing the model and extracting trend component
+fit_dcmp <- decompose(firearm_ts)
+trend <- fit_dcmp$trend # important
+# firearm_seasonal <- fit_dcmp$seasonal
+# firearm_remainder <- fit_dcmp$random
 
-library(dplyr)
+autoplot(fit_dcmp) + 
+  xlab("Year") + 
+  ylab("Total Background Checks") + 
+  ggtitle("USFirearm Decomposition")
 
-# load the data
-data <- read.csv(url)
 
-# convert the month column to a date format
-data$month <- as.Date(paste0(data$month, "-01"))
-
-# calculate the total number of firearm background checks for each state and month
-data <- data %>% 
-  group_by(state, month) %>% 
-  summarise(total_checks = sum(totals, na.rm = TRUE))
-
-# calculate the growth rate of the total number of firearm background checks for each state and month
-data <- data %>% 
-  group_by(state) %>% 
-  mutate(growth_rate = (total_checks - lag(total_checks, default = 0))/lag(total_checks, default = 1))
-
-# calculate the average growth rate for each state
-avg_growth_rate <- data %>% 
-  group_by(state) %>% 
-  summarise(avg_growth_rate = mean(growth_rate, na.rm = TRUE))
-
-# print the results
-print(avg_growth_rate)
-
+autoplot(trend) + xlab("Year") + ylab("Total Background Checks") + 
+  ggtitle("Overall Trend of firearm background checks in US")
 
 ```
+
+we can see that there is cyclone repeating every 4 years or so.
